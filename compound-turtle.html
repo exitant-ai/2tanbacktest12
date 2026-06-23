@@ -73,6 +73,8 @@
 
   .dates{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
   .dbox{background:#0a120d;border:1px solid var(--line2);border-radius:11px;padding:12px 6px;text-align:center;font-weight:700;font-size:15px}
+  select.dbox{appearance:none;-webkit-appearance:none;-moz-appearance:none;color:var(--txt);font-family:var(--mono);cursor:pointer;text-align:center;text-align-last:center;outline:none}
+  select.dbox option{background:#0a130d;color:var(--txt)}
   .dsub{font-size:11px;color:var(--mut);margin:10px 0 6px}
   .presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
   .presets button{background:#0a120d;border:1px solid var(--line);color:var(--mut);padding:7px 12px;border-radius:999px;font-family:var(--mono);font-size:11.5px;cursor:pointer}
@@ -154,7 +156,7 @@
   .help-body ul{margin:6px 0 0;padding-left:20px}
   .help-body li{margin:5px 0;list-style:disc}
   .help-tip{margin-top:18px;padding:13px 15px;border-left:3px solid var(--green2);background:rgba(46,232,132,.06);
-    border-radius:0 9px 9px 0;color:#9fb3a7;font-size:13px;line-height:1.7;word-break:keep-all}
+    border-radius:0 9px 9px 0;color:#9fb3a7;font-size:13px;line-height:1.7;word-break:keep-all;white-space:pre-line}
   .help-tip:empty{display:none}
 
   /* ===== 모바일 최적화 ===== */
@@ -265,11 +267,11 @@
         <div class="hd">백테스트 기간 <button class="help" data-help="period">?</button><span class="r">년 · 월 · 일</span></div>
         <div class="dsub">시작</div>
         <div class="dates">
-          <div class="dbox" id="sY">1985년</div><div class="dbox" id="sM">1월</div><div class="dbox" id="sD">2일</div>
+          <select class="dbox" id="sY"></select><select class="dbox" id="sM"></select><select class="dbox" id="sD"></select>
         </div>
         <div class="dsub">종료</div>
         <div class="dates">
-          <div class="dbox" id="eY">2026년</div><div class="dbox" id="eM">6월</div><div class="dbox" id="eD">18일</div>
+          <select class="dbox" id="eY"></select><select class="dbox" id="eM"></select><select class="dbox" id="eD"></select>
         </div>
         <div class="presets" id="presets">
           <button data-y="5">최근 5년</button>
@@ -398,16 +400,58 @@ $('#dn').oninput=e=>{cfg.dn=+e.target.value/100;$('#dnV').textContent=e.target.v
 $('#dep').oninput=e=>{cfg.dep=+e.target.value/100;$('#depV').textContent=e.target.value;};
 $('#seed').oninput=e=>{const v=parseInt(e.target.value.replace(/[^0-9]/g,''))||0;cfg.seed=v;};
 
+function daysIn(y,m){return new Date(y,m,0).getDate();}
+function fillSel(sel,from,to,suffix){
+  const cur=sel.value; sel.innerHTML='';
+  for(let v=from;v<=to;v++){const o=document.createElement('option');o.value=String(v);o.textContent=v+suffix;sel.appendChild(o);}
+  if(cur)sel.value=cur;
+}
+function fillDays(yId,mId,dId){
+  const y=+$('#'+yId).value||2000, m=+$('#'+mId).value||1, dmax=daysIn(y,m);
+  const sel=$('#'+dId), cur=+sel.value||1;
+  fillSel(sel,1,dmax,'일'); sel.value=String(Math.min(cur,dmax));
+}
+function fillYears(){
+  const data=DB[cfg.asset], minY=+data[0][0].slice(0,4), maxY=+data[data.length-1][0].slice(0,4);
+  fillSel($('#sY'),minY,maxY,'년'); fillSel($('#eY'),minY,maxY,'년');
+}
+function assemble(yId,mId,dId){
+  const y=$('#'+yId).value, m=String(+$('#'+mId).value).padStart(2,'0'), d=String(+$('#'+dId).value).padStart(2,'0');
+  return y+'-'+m+'-'+d;
+}
+// 드롭다운 값 동기화 (구 setDateBoxes 대체)
 function setDateBoxes(s,e){
-  $('#sY').textContent=s.slice(0,4)+'년';$('#sM').textContent=+s.slice(5,7)+'월';$('#sD').textContent=+s.slice(8,10)+'일';
-  $('#eY').textContent=e.slice(0,4)+'년';$('#eM').textContent=+e.slice(5,7)+'월';$('#eD').textContent=+e.slice(8,10)+'일';
+  $('#sY').value=s.slice(0,4); $('#sM').value=String(+s.slice(5,7)); fillDays('sY','sM','sD'); $('#sD').value=String(+s.slice(8,10));
+  $('#eY').value=e.slice(0,4); $('#eM').value=String(+e.slice(5,7)); fillDays('eY','eM','eD'); $('#eD').value=String(+e.slice(8,10));
 }
 function clampDates(){
-  const data=DB[cfg.asset]; const min=data[0][0],max=data[data.length-1][0];
-  if(cfg.start<min)cfg.start=min; if(cfg.end>max)cfg.end=max;
+  const data=DB[cfg.asset], min=data[0][0], max=data[data.length-1][0];
+  if(cfg.start<min)cfg.start=min; if(cfg.start>max)cfg.start=max;
+  if(cfg.end>max)cfg.end=max; if(cfg.end<min)cfg.end=min;
+  if(cfg.start>cfg.end)cfg.start=cfg.end;
+  fillYears();
   setDateBoxes(cfg.start,cfg.end);
   $('#rangeHint').textContent='가능 범위: '+min+' ~ '+max;
 }
+// 연·월·일 개별 선택 시: 해당 그룹만 갱신하고 범위 안으로 클램프
+function onDatePick(which){
+  if(which==='s')fillDays('sY','sM','sD'); else fillDays('eY','eM','eD');
+  const data=DB[cfg.asset], min=data[0][0], max=data[data.length-1][0];
+  let s=assemble('sY','sM','sD'), e=assemble('eY','eM','eD');
+  if(s<min)s=min; if(s>max)s=max; if(e<min)e=min; if(e>max)e=max;
+  if(s>e){ if(which==='s')e=s; else s=e; }
+  cfg.start=s; cfg.end=e;
+  $$('#presets button').forEach(x=>x.classList.remove('on'));
+  setDateBoxes(s,e);
+  $('#rangeHint').textContent='가능 범위: '+min+' ~ '+max;
+}
+function initDateSelects(){
+  fillSel($('#sM'),1,12,'월'); fillSel($('#eM'),1,12,'월');
+  fillYears(); fillDays('sY','sM','sD'); fillDays('eY','eM','eD');
+  ['sY','sM','sD'].forEach(id=>$('#'+id).onchange=()=>onDatePick('s'));
+  ['eY','eM','eD'].forEach(id=>$('#'+id).onchange=()=>onDatePick('e'));
+}
+initDateSelects();
 
 // 최근 N년 프리셋 (데이터 끝일 기준 N년 전 ~ 끝)
 $$('#presets button').forEach(b=>b.onclick=()=>{
@@ -599,7 +643,7 @@ const HELP={
       <li><b>2배</b>: 기초자산 −50% 시 청산권</li>
       <li><b>3배</b>: 기초자산 −33% 시 청산권</li>
     </ul>`,
-    tip:'배율이 높을수록 강세장 수익은 크지만, 닷컴·2008 같은 폭락에선 연속 손절로 자산이 거의 소멸할 수 있습니다. 데이터상 1배가 가장 안전합니다.'},
+    tip:'배율이 높을수록 수익·낙폭이 함께 커집니다.\n[기본 설정: NDX100 1985~2026 · 20/20 · 2ATR · 시드 $10,000]\n1배 → 시드 21배(MDD −40%) / 3배 → 972배(MDD −80%).\n3배가 수익 최고지만 낙폭도 최고(QQQ 3배는 −93%).\n\n백테스트 데이터상 레버리지 3배는 단일 청산은 0회로 없었습니다.\n하락장이 오더라도, 견딜 수 있는 낙폭만큼 배율을 고르세요.'},
 
   seed:{t:'시작 시드란?',b:`<p>백테스트를 시작할 때의 <b>초기 자본금</b>입니다. 기본값은 $10,000.</p>
     <p>모든 수익·손실은 이 시드를 기준으로 복리로 계산됩니다. 시드를 바꿔도 수익률(%)·MDD는 동일하고 금액만 비례해 커지거나 작아집니다.</p>`,tip:''},
