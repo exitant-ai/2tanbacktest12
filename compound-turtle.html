@@ -114,6 +114,7 @@
   .b-q{background:rgba(157,122,240,.16);color:var(--purple)}
   .b-store{background:rgba(231,178,74,.16);color:var(--amber)}
   .b-inj{background:rgba(60,232,160,.16);color:var(--mint)}
+.b-liq{background:rgba(255,77,79,.16);color:#ff7875;border:1px solid rgba(255,77,79,.4)}
   .crisis-tag{font-size:10px;background:var(--red);color:#fff;padding:2px 7px;border-radius:5px;margin-left:8px;font-weight:700}
 
   .foot{margin-top:16px;color:var(--mut);font-size:11.5px;line-height:1.8}
@@ -306,7 +307,7 @@
 
       <div class="blk">
         <div class="hd">적립 (익절 시 격리) <button class="help" data-help="skim">?</button><span class="r"><span id="skimV">10</span>%</span></div>
-        <input type="range" id="skim" min="1" max="15" step="1" value="10">
+        <input type="range" id="skim" min="0" max="15" step="1" value="10">
       </div>
 
       <div class="blk">
@@ -422,7 +423,12 @@ $$('#presets button').forEach(b=>b.onclick=()=>{
   clampDates();
 });
 
-// ====== V4 엔진 (파이썬 검증 일치) ======
+// ====== V5 엔진 (회계 보존형 · 2-pool 분리) ======
+// FIX 요약:
+//  B1) 거래주머니(acct)와 현금금고(vault)를 물리적으로 분리 → 보관/투입 시 총자산 보존
+//  B2) 레버리지 청산선(-1/lev)을 갭하락 체결가 하한으로 적용 → 손실이 증거금 초과 불가
+//  B7) CAGR을 실제 경과 연수(달력 일수)로 계산
+//  B15) 채널·ATR 워밍업(start)을 max(hh,ll,atrLen+1)까지 확보 → 조기 진입 제거
 function backtest(data,c){
   const si0=data.findIndex(r=>r[0]>=c.start);
   let ei=data.findIndex(r=>r[0]>c.end); if(ei<0)ei=data.length;
@@ -437,44 +443,44 @@ function backtest(data,c){
   const ll=(i,w)=>{let m=Infinity;for(let k=i-w;k<i;k++)if(L[k]<m)m=L[k];return m;};
   const comm=0.0015;
   const s1=c.skim,s2=c.skim*1.5,s3=c.skim*1.8,s4=c.skim*2.0;
-  const start=Math.max(si0,atrLen+1);
-  let equity=c.seed,cash=0,ref=c.seed,peakA=c.seed,pos=null;
-  let peak=c.seed,mdd=0,dp=0,tc=0,wins=0;
-  const yearly={};let prev=null,ys=c.seed,yp=c.seed,ymdd=0,ytr=0,yStore=0,yInj=0;
-  const A=i=>(equity+(pos?(C[i]-pos.ep)*pos.u:0))+cash;
+  const start=Math.max(si0,atrLen+1,c.hh,c.ll);                 // FIX B15
+  const LIQ=c.lev>1?-1/c.lev:null;                             // FIX B2
+  let acct=c.seed,vault=0,ref=c.seed,peakA=c.seed,pos=null;     // FIX B1: 거래주머니/금고 분리
+  let peak=c.seed,mdd=0,dp=0,tc=0,wins=0,liqs=0;
+  const yearly={};let prev=null,ys=c.seed,yp=c.seed,ymdd=0,ytr=0,yStore=0,yInj=0,yLiq=0;
+  const A=i=>acct+(pos?(C[i]-pos.ep)*pos.u:0)+vault;           // 총자산 = 거래주머니 + 미실현 + 금고
   for(let i=start;i<ei;i++){
     const yr=data[i][0].slice(0,4);
-    if(yr!==prev){if(prev!==null)yearly[prev]={s:ys,e:A(i-1),mdd:ymdd*100,cash,tr:ytr,store:yStore,inj:yInj,
-        stock:(prev_e_stock||0)};prev=yr;ys=A(i);yp=ys;ymdd=0;ytr=0;yStore=0;yInj=0;}
+    if(yr!==prev){if(prev!==null)yearly[prev]={s:ys,e:A(i-1),mdd:ymdd*100,cash:vault,tr:ytr,store:yStore,inj:yInj,liq:yLiq};
+      prev=yr;ys=A(i);yp=ys;ymdd=0;ytr=0;yStore=0;yInj=0;yLiq=0;}
     let cur=A(i);if(cur>peakA)peakA=cur;
     if(pos){
-      const stop=pos.ep-c.atrMult*pos.atr;let ex=false,px=0,llf=false;
-      if(L[i]<=stop){px=Math.min(O[i],stop);ex=true;}
+      const stop=pos.ep-c.atrMult*pos.atr;let ex=false,px=0,llf=false,liq=false;
+      if(L[i]<=stop){px=Math.min(O[i],stop);if(LIQ!==null&&px<pos.ep*(1+LIQ)){px=pos.ep*(1+LIQ);liq=true;}ex=true;} // FIX B2: 체결가 하한
       else if(C[i]<ll(i,c.ll)){px=C[i];ex=true;llf=true;}
       if(ex){
         const g=(px-pos.ep)*pos.u,fee=(pos.ep+px)*pos.u*comm;
-        equity+=g-fee;pos=null;ytr++;tc++;if(g-fee>0)wins++;
-        const a=equity+cash,gr=(a-ref)/ref;
+        acct+=g-fee;pos=null;ytr++;tc++;if(g-fee>0)wins++;if(liq){liqs++;yLiq++;}
+        if(acct<0){vault+=acct;acct=0;}                        // 잔여 손실 흡수(데이터상 미발생)
+        const a=acct+vault,gr=(a-ref)/ref;
         let sr=0;if(llf)sr=gr>=2.0?s4:gr>=1.5?s3:gr>=1.0?s2:gr>=0.5?s1:0;
-        if(sr>0){const sk=Math.min(a*sr,equity);cash+=sk;ref=equity+cash;yStore++;}
-        else if(a<=peakA*(1-c.dn)&&cash>0){cash-=cash*c.dep;ref=equity+cash;peakA=equity+cash;dp++;yInj++;}
+        if(sr>0){const sk=Math.min(a*sr,acct);if(sk>0){acct-=sk;vault+=sk;ref=acct+vault;yStore++;}}                                  // FIX B1: 보존 보관
+        else if(a<=peakA*(1-c.dn)&&vault>0){const inj=vault*c.dep;vault-=inj;acct+=inj;ref=acct+vault;peakA=acct+vault;dp++;yInj++;}  // FIX B1: 보존 투입
       }
     }
-    if(!pos&&ATR[i]!=null&&C[i]>hh(i,c.hh)){const u=(Math.max(equity-cash,0)*c.lev)/C[i];if(u>0)pos={ep:C[i],u,atr:ATR[i]};}
+    if(!pos&&ATR[i]!=null&&C[i]>hh(i,c.hh)){const u=(Math.max(acct,0)*c.lev)/C[i];if(u>0)pos={ep:C[i],u,atr:ATR[i]};}                  // FIX B1: 베이스=거래주머니
     const a=A(i);peak=Math.max(peak,a);mdd=Math.max(mdd,(peak-a)/peak);
     yp=Math.max(yp,a);ymdd=Math.max(ymdd,(yp-a)/yp);
-    var prev_e_stock=equity+(pos?(C[i]-pos.ep)*pos.u:0); // 보유주식 평가액
   }
-  yearly[prev]={s:ys,e:A(ei-1),mdd:ymdd*100,cash,tr:ytr,store:yStore,inj:yInj,
-    stock:(equity+(pos?(C[ei-1]-pos.ep)*pos.u:0))};
-  // 각 연도 보유주식 = 종료시점 total - cash
+  yearly[prev]={s:ys,e:A(ei-1),mdd:ymdd*100,cash:vault,tr:ytr,store:yStore,inj:yInj,liq:yLiq};
   for(const y in yearly){yearly[y].stockVal=yearly[y].e-yearly[y].cash;}
   const final=A(ei-1);
   const bh=(C[ei-1]/C[start]-1)*100;
-  const yrs=Object.keys(yearly).length;
-  const cagr=final>0?(Math.pow(final/c.seed,1/yrs)-1)*100:-100;
-  return {yearly,final,ret:(final/c.seed-1)*100,mdd:mdd*100,cagr,dp,tc,wins,bh,
-    startDate:data[start][0],endDate:data[ei-1][0]};
+  const d0=data[start][0],d1=data[ei-1][0];
+  const yrsExact=(new Date(d1)-new Date(d0))/(365.25*864e5);    // FIX B7
+  const cagr=final>0&&yrsExact>0?(Math.pow(final/c.seed,1/yrsExact)-1)*100:-100;
+  return {yearly,final,ret:(final/c.seed-1)*100,mdd:mdd*100,cagr,dp,tc,wins,liqs,bh,
+    startDate:d0,endDate:d1};
 }
 
 // ====== 렌더 ======
@@ -495,6 +501,7 @@ function runBacktest(){
     let badges='';
     if(e.store>0)badges+=`<span class="badge b-store">현금 보관 ${e.store}</span>`;
     if(e.inj>0)badges+=`<span class="badge b-inj">현금 투입 ${e.inj}</span>`;
+    if(e.liq>0)badges+=`<span class="badge b-liq">청산 ${e.liq}</span>`;
     if(e.tr>0)badges+=`<span class="badge b-q">거래 ${e.tr}회</span>`;
     rows+=`<tr class="${cr?'crisis':''}">
       <td class="yr">${y}${cr?`<span class="crisis-tag">${cr}</span>`:''}</td>
