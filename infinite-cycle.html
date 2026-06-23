@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -23,8 +24,9 @@ body{
     radial-gradient(ellipse 80% 50% at 50% 100%, rgba(0,255,157,.18), transparent 70%),
     radial-gradient(ellipse 60% 40% at 80% 0%, rgba(0,255,157,.06), transparent 60%),
     linear-gradient(180deg, #000000 0%, #03100a 55%, #051c12 100%);
-  background-attachment:fixed;min-height:100vh;
+  background-attachment:fixed;min-height:100vh;overflow-x:hidden;
 }
+html{overflow-x:hidden}
 .wrap{max-width:1200px;margin:0 auto;padding:0 22px}
 
 /* HEADER */
@@ -58,6 +60,7 @@ header{padding:30px 0 0}
 
 /* LAYOUT */
 .main{display:grid;grid-template-columns:360px 1fr;gap:24px;margin-bottom:40px}
+.main>*{min-width:0}
 @media(max-width:900px){.main{grid-template-columns:1fr}}
 .panel{background:linear-gradient(160deg,rgba(13,29,20,.9),rgba(4,16,10,.85));
   border:1px solid var(--line);border-radius:18px;padding:28px 26px 34px;
@@ -121,7 +124,7 @@ input[type=range]{flex:1;accent-color:var(--neon);height:4px}
   font-weight:700;margin-bottom:14px;display:flex;justify-content:space-between;align-items:baseline;
   flex-wrap:wrap;gap:8px;color:var(--neon-dim)}
 .tbl-head .meta{color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none}
-.tbl-scroll{overflow-x:auto;border-radius:12px;border:1px solid var(--line)}
+.tbl-scroll{overflow-x:auto;max-width:100%;border-radius:12px;border:1px solid var(--line)}
 table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
 th{text-align:right;padding:10px 10px;border-bottom:1px solid var(--line);font-size:10px;
   letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;white-space:nowrap;
