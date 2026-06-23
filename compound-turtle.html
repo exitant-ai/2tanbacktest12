@@ -508,10 +508,10 @@ function runBacktest(){
   const tqqqWarn = cfg.asset==='TQQQ'&&cfg.lev>1.5;
   $('#results').innerHTML=`
     <div class="stats">
-      <div class="stat"><div class="k">최종 잔고</div><div class="v wht">${fmt(r.final)}</div></div>
-      <div class="stat"><div class="k">총 수익률 · 시드</div><div class="sub">${fmt(cfg.seed)}</div><div class="v ${r.ret>=0?'pos':'neg'}">${pct(r.ret)}</div></div>
-      <div class="stat"><div class="k">연평균 복리 (CAGR)</div><div class="v ${r.cagr>=0?'pos':'neg'}">${pct(r.cagr,1)}</div></div>
-      <div class="stat"><div class="k">고점 대비 최대낙폭 (MDD)</div><div class="v neg">-${r.mdd.toFixed(1)}%</div></div>
+      <div class="stat"><div class="k">최종 잔고 <button class="help" data-help="final">?</button></div><div class="v wht">${fmt(r.final)}</div></div>
+      <div class="stat"><div class="k">총 수익률 <button class="help" data-help="ret">?</button> · 시드</div><div class="sub">${fmt(cfg.seed)}</div><div class="v ${r.ret>=0?'pos':'neg'}">${pct(r.ret)}</div></div>
+      <div class="stat"><div class="k">연평균 복리 (CAGR) <button class="help" data-help="cagr">?</button></div><div class="v ${r.cagr>=0?'pos':'neg'}">${pct(r.cagr,1)}</div></div>
+      <div class="stat"><div class="k">고점 대비 최대낙폭 (MDD) <button class="help" data-help="mdd">?</button></div><div class="v neg">-${r.mdd.toFixed(1)}%</div></div>
     </div>
     <div class="rtitle">
       <h2>연도별 결과</h2>
@@ -598,6 +598,18 @@ const HELP={
   period:{t:'백테스트 기간이란?',b:`<p>전략을 검증할 <b>시작일과 종료일</b>입니다. 아래 프리셋(최근 5/10/15/20/30년)으로 빠르게 설정할 수 있습니다.</p>
     <p>같은 전략도 <b>언제부터 시작하느냐</b>에 따라 결과가 크게 달라집니다. 닷컴버블(2000~2002)을 포함하면 3배 레버리지는 청산 위험이 드러나고, 강세장만 보면 좋게 나옵니다.</p>`,
     tip:'짧은 강세장 구간만 보면 전략이 과대평가될 수 있습니다. 긴 기간(폭락 포함)으로 검증하는 게 정직합니다.'},
+  final:{t:'최종 잔고란?',b:`<p>백테스트가 끝나는 날 손에 남는 <b>전체 자산</b>입니다. <b>보유주식 평가액 + 현금잔고</b>를 모두 합한 값이에요.</p>
+    <p>처음 넣은 시드(투자 원금)가 이 전략을 거쳐 마지막에 얼마가 됐는지를 보여주는, 가장 직관적인 결과입니다.</p>`,
+    tip:'시드 $10,000 → 최종 $250,000이면 원금이 약 25배가 된 셈입니다.'},
+  ret:{t:'총 수익률이란?',b:`<p>시드 대비 전체 기간 동안 <b>누적으로 얼마나 불었는지</b>를 %로 나타낸 값입니다. 공식은 <b>(최종 잔고 ÷ 시드 − 1) × 100</b>.</p>
+    <p>기간 길이를 반영하지 않는 "총합"이라, 기간이 길수록 숫자가 커지는 게 당연합니다. 서로 다른 기간의 전략을 비교할 땐 아래 CAGR이 더 공정합니다.</p>`,
+    tip:'+2,400% = 원금의 약 25배 (1 + 24).'},
+  cagr:{t:'연평균 복리(CAGR)란?',b:`<p>총 수익률을 <b>"매년 평균 몇 %씩 복리로 불었나"</b>로 환산한 값입니다. 공식은 <b>(최종 ÷ 시드)^(1÷연수) − 1</b>.</p>
+    <p>기간 길이를 반영하기 때문에, <b>기간이 다른 전략끼리도 공정하게 비교</b>할 수 있는 핵심 지표입니다. 총 수익률과 달리 기간이 길어진다고 부풀지 않습니다.</p>`,
+    tip:'같은 총수익률이라도 기간이 짧으면 CAGR이 높고, 길면 낮아집니다.'},
+  mdd:{t:'최대낙폭(MDD)이란?',b:`<p><b>MDD(Maximum Drawdown)</b>는 자산이 <b>역대 최고점에서 바닥까지 가장 크게 빠졌던 폭</b>입니다. 그 전략으로 겪을 수 있는 "최악의 고통"을 보여줍니다.</p>
+    <p>수익률만큼 중요한 <b>위험 지표</b>입니다. 특히 레버리지에서는 MDD가 깊을수록 청산 위험도 함께 커집니다.</p>`,
+    tip:'−60% = 어느 시점에 고점 대비 자산이 60% 줄었던 적이 있다는 뜻 (예: $100만 → 한때 약 $40만).'},
 };
 
 function openHelp(key){
@@ -608,7 +620,7 @@ function openHelp(key){
   $('#helpOverlay').classList.add('on');
 }
 function closeHelp(){$('#helpOverlay').classList.remove('on');}
-$$('.help').forEach(b=>b.onclick=e=>{e.stopPropagation();openHelp(b.dataset.help);});
+document.addEventListener('click',e=>{const b=e.target.closest('.help');if(!b)return;e.stopPropagation();openHelp(b.dataset.help);});
 $('#helpClose').onclick=closeHelp;
 $('#helpOverlay').onclick=e=>{if(e.target===$('#helpOverlay'))closeHelp();};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeHelp();});
