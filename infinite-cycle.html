@@ -488,17 +488,8 @@ function buildQuickRange(ly,hy){
   const qr=document.getElementById('quickRange');
   const [lo,hi]=lo_hi();
   const presets=[];
-  presets.push(['전체기간',lo,hi]);
-  // 최근 10년/5년
-  const hY=Math.floor(hi/10000);
-  if(hY-10>=ly)presets.push(['최근10년',(hY-10)*10000+101,hi]);
-  if(hY-5>=ly)presets.push(['최근5년',(hY-5)*10000+101,hi]);
-  // 위기 구간 (자산에 포함된 것만)
-  if(ly<=2008)presets.push(['2008 금융위기',20071001,20091231]);
-  if(ly<=2020)presets.push(['2020 코로나',20200101,20211231]);
-  if(ly<=2022)presets.push(['2022 긴축',20220101,20231231]);
-  if(ly<=1987&&S.asset==='ndx3')presets.push(['1987 블랙먼데이',19870101,19881231]);
-  if(ly<=2000&&S.asset==='ndx3')presets.push(['닷컴버블',20000101,20021231]);
+  // 최근 N년 (데이터 끝일 기준 N년 전 ~ 끝). 데이터보다 길면 클릭 시 가능 범위로 자동 조정.
+  [5,10,15,20,30,40].forEach(n=>presets.push(['최근 '+n+'년',hi-n*10000,hi]));
   qr.innerHTML='';
   presets.forEach(p=>{
     const b=document.createElement('div');b.className='qr-btn';b.textContent=p[0];
