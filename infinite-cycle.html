@@ -535,6 +535,9 @@ function backtest(cfg){
   const eqop=px=>cash+msum()+pos.reduce((a,p)=>a+p.n*(px/p.ep-1),0);
   function qc(px){if(!pos.length)return;yQc++;totQc++;const tgt=msum()*QFRAC;let freed=0;pos.sort((a,b)=>b.tpp-a.tpp);
     while(pos.length&&freed<tgt){const p=pos.shift();cash+=p.m+p.n*(px/p.ep-1)-p.n*(px/p.ep)*COST;freed+=p.m;}}
+  // 보관용 쿼터컷: 보관할 현금이 부족할 때, 익절 기준(목표가)이 낮은=싸게 산=이익 큰 포지션부터 팔아 현금 확보
+  function qcStore(px,need){if(!pos.length||cash>=need)return;pos.sort((a,b)=>a.tpp-b.tpp);yQc++;totQc++;
+    let g=0;while(pos.length&&cash<need&&g<200){const p=pos.shift();cash+=p.m+p.n*(px/p.ep-1)-p.n*(px/p.ep)*COST;g++;}}
   let pk=-1,mdd=0;const yearAgg={};const yearRows=[];let yStore=0,yInj=0,yLiq=0,yQc=0,totQc=0;
   for(let i=0;i<rows.length;i++){
     const dt=rows[i][0],hi=rows[i][1],lo=rows[i][2],px=rows[i][3];
@@ -550,10 +553,21 @@ function backtest(cfg){
       if(margin>0){let g=0;while((msum()+margin>cap||cash<margin)&&pos.length&&g<200){qc(px);g++;}
         if(cash>=margin&&msum()+margin<=cap+1e-6){const n=margin*LEV;cash-=margin+n*COST;
           const tpv=(up?cfg.tp.utp:cfg.tp.dtp)/100*tpScale;pos.push({ei:i,m:margin,n:n,ep:px,tp:tpv,tpp:px*(1+tpv)});}}}
-    const opv=Math.max(eqop(px),0),total=opv+vault;
-    if(safety){if(opv>=grow_base*GROW&&opv>0){const st=Math.min(total*STORE,cash);if(st>0){cash-=st;vault+=st;yStore++;}grow_base=opv;}
+    let opv=Math.max(eqop(px),0),total=opv+vault;
+    if(safety){
+      // 보관: 자산이 기준선 대비 N% 상승하면 트레이딩→펀딩 보관. 현금 부족 시 보관용 쿼터컷으로 실탄 확보 후 보관.
+      if(opv>=grow_base*GROW&&opv>0){
+        const need=total*STORE;
+        if(cash<need)qcStore(px,need);
+        opv=Math.max(eqop(px),0);total=opv+vault;   // 쿼터컷 매도 반영 후 재계산
+        const st=Math.min(total*STORE,cash);
+        if(st>0){cash-=st;vault+=st;yStore++;}
+        grow_base=opv;                               // 보관까지 끝낸 뒤 상승 기준선 갱신
+      }
+      // 투입: 자산이 전고점 대비 N% 하락하면 펀딩→트레이딩 (기존 로직 유지)
       if(total>peak){peak=total;drop_base=null;}const ref=drop_base!==null?drop_base:peak;
-      if(total<=ref*DROPT&&vault>0){const inj=vault*INJ;vault-=inj;cash+=inj;drop_base=total;yInj++;}}else{if(total>peak)peak=total;}
+      if(total<=ref*DROPT&&vault>0){const inj=vault*INJ;vault-=inj;cash+=inj;drop_base=total;yInj++;}
+    }else{if(total>peak)peak=total;}
     if(total>pk)pk=total;if(pk>0&&total/pk-1<mdd)mdd=total/pk-1;
     if(!yearAgg[yr])yearAgg[yr]={pkin:total,mddin:0};
     const ya=yearAgg[yr];if(total>ya.pkin)ya.pkin=total;if(ya.pkin>0&&total/ya.pkin-1<ya.mddin)ya.mddin=total/ya.pkin-1;
